@@ -1,4 +1,5 @@
 <div align="center">
+![OIG1 H4I7pp](https://github.com/user-attachments/assets/121157c3-12ab-4c8d-8291-cbd9aabd1050)
 
 # 🛡️ PromptLock Defender
 
