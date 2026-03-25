@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.spec
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.suo
+*.user
+
+# Logs & reports
+*.log
+demo_report.html
+demo_report.json
+
+# Inno Setup output
+Output/
+
+# Тестовые артефакты (PromptLock-записки, которые генерируются при тесте)
+HOW_TO_DECRYPT.txt
+README_TO_DECRYPT.txt
+sample_jailbreak_pattern.py
+sample_encryption_pattern.py
+_check.py
+
+# OS
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# PyInstaller
+*.manifest
