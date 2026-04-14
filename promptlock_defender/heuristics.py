@@ -18,16 +18,30 @@ from .engine import Alert, DetectionEngine, Severity, ThreatCategory
 
 logger = logging.getLogger("promptlock_defender.heuristics")
 
-# Порог энтропии: обычный текст ~4.5, сжатый/зашифрованный ~7.5+
-ENTROPY_THRESHOLD_HIGH = 7.5
-ENTROPY_THRESHOLD_SUSPICIOUS = 7.1
+ENTROPY_THRESHOLD_HIGH = 7.85
+ENTROPY_THRESHOLD_SUSPICIOUS = 7.5
 
-MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 МБ
+MAX_FILE_SIZE = 10 * 1024 * 1024
+
+WHITELIST_EXTENSIONS = {
+    '.jar', '.pack', '.assets', '.dll', '.exe', '.pyc', '.pyd', '.png', '.jpg', 'bik'
+}
 
 
 # =====================================================================
 # Энтропийный анализ
 # =====================================================================
+
+def is_binary_noise(data: bytes) -> bool:
+    """
+    Быстрая проверка: если в начале файла нет человекочитаемых символов,
+    но это не известный нам формат архива — тогда это подозрительно.
+    """
+    if not data: return False
+    # Считаем процент печатных символов в первом килобайте
+    chunk = data[:1024]
+    printable = sum(1 for b in chunk if 32 <= b <= 126 or b in (10, 13))
+    return (printable / len(chunk)) < 0.1 # Если меньше 10% читаемо — это бинарник
 
 def calculate_entropy(data: bytes) -> float:
     """Вычисление энтропии Шеннона для байтовой последовательности."""
@@ -43,25 +57,25 @@ def calculate_entropy(data: bytes) -> float:
 
 
 class EntropyAnalyzer:
-    """Анализ энтропии файлов для обнаружения зашифрованных/обфусцированных данных."""
-
     def __init__(self, engine: DetectionEngine):
         self.engine = engine
 
     def scan_directory(self, target_dir: str) -> int:
         target = Path(target_dir)
-        if not target.exists():
-            return 0
-
         alerts_before = len(self.engine.alerts)
-        high_entropy_files = []
 
         for root, _, files in os.walk(target):
             for filename in files:
                 filepath = Path(root) / filename
+                ext = filepath.suffix.lower()
+
+                if ext in WHITELIST_EXTENSIONS:
+                    continue
+
                 try:
                     size = filepath.stat().st_size
-                    if size == 0 or size > MAX_FILE_SIZE:
+                    # Пропускаем совсем мелкие и гигантские файлы
+                    if size < 512 or size > MAX_FILE_SIZE:
                         continue
                     data = filepath.read_bytes()
                 except OSError:
@@ -69,42 +83,32 @@ class EntropyAnalyzer:
 
                 entropy = calculate_entropy(data)
 
+                # Логика: если это текстовый формат, но энтропия высокая — это обфускация
+                is_text_type = ext in {'.py', '.txt', '.lua', '.js', '.md'}
+
                 if entropy >= ENTROPY_THRESHOLD_HIGH:
-                    high_entropy_files.append((filepath, entropy))
-                    office_exts = {'.docx', '.pdf', '.pptx', '.xlsx', '.xls', '.odt', '.ods', '.odp', '.rtf'}
-                    ext = filepath.suffix.lower()
-                    if ext in office_exts:
-                        sev = Severity.LOW
-                    else:
-                        sev = Severity.HIGH
+                    # Для текстов это КРИТИЧНО, для неопознанных файлов — ВЫСОКО
+                    sev = Severity.CRITICAL if is_text_type else Severity.HIGH
                     self.engine.add_alert(Alert(
                         timestamp=datetime.now(),
                         category=ThreatCategory.FILE_ENCRYPTION,
                         severity=sev,
-                        description=(
-                            f"Высокая энтропия ({entropy:.2f}/8.0) — "
-                            f"вероятно зашифрованный или обфусцированный файл."
-                        ),
+                        description=f"Критическая энтропия ({entropy:.2f}). Файл похож на зашифрованный.",
                         source_path=str(filepath),
-                        details={"entropy": round(entropy, 3), "size": size},
+                        details={"entropy": round(entropy, 3)}
                     ))
-                elif entropy >= ENTROPY_THRESHOLD_SUSPICIOUS:
-                    # Подозрительно только для текстовых файлов
-                    if filepath.suffix.lower() in {".txt", ".py", ".lua", ".js", ".sh", ".md"}:
-                        self.engine.add_alert(Alert(
-                            timestamp=datetime.now(),
-                            category=ThreatCategory.FILE_ENCRYPTION,
-                            severity=Severity.MEDIUM,
-                            description=(
-                                f"Повышенная энтропия ({entropy:.2f}/8.0) для текстового файла — "
-                                f"возможна обфускация."
-                            ),
-                            source_path=str(filepath),
-                            details={"entropy": round(entropy, 3)},
-                        ))
+                elif is_text_type and entropy > 6.8:
+                    # Специальная проверка для кода: нормальный код редко выше 5.5
+                    self.engine.add_alert(Alert(
+                        timestamp=datetime.now(),
+                        category=ThreatCategory.FILE_ENCRYPTION,
+                        severity=Severity.MEDIUM,
+                        description=f"Подозрительная плотность данных для кода ({entropy:.2f}). Возможна обфускация.",
+                        source_path=str(filepath),
+                        details={"entropy": round(entropy, 3)}
+                    ))
 
         return len(self.engine.alerts) - alerts_before
-
 
 # =====================================================================
 # AST-анализ Python
@@ -243,6 +247,8 @@ class ASTAnalyzer:
         self.engine = engine
 
     def scan_directory(self, target_dir: str) -> int:
+
+
         target = Path(target_dir)
         if not target.exists():
             return 0
@@ -263,56 +269,90 @@ class ASTAnalyzer:
         return len(self.engine.alerts) - alerts_before
 
     def _analyze_file(self, filepath: Path):
+        """
+        Глубокий анализ Python-файла с использованием AST и системы весов.
+        """
         try:
+            # Читаем код
             source = filepath.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            return
-
-        try:
             tree = ast.parse(source, filename=str(filepath))
-        except SyntaxError:
+        except (OSError, SyntaxError):
             return
 
+        # Запускаем сбор признаков через Visitor
         visitor = _MaliciousPatternVisitor()
         visitor.visit(tree)
 
+        # --- СИСТЕМА ВЕСОВ (THREAT SCORE) ---
+        # Рассчитываем опасность файла на основе комбинации находок
+        weight = 0
+
+        # 1. Базовые подозрительные модули (os, subprocess)
+        if any(f[0] == "dangerous_import" for f in visitor.findings):
+            weight += 10
+
+        # 2. Опасные вызовы (удаление файлов, запуск процессов)
+        if visitor._file_removes:
+            weight += 25
+        if visitor._subprocess_calls:
+            weight += 20
+
+        # 3. Работа с сетью (особенно если это запросы к LLM)
+        llm_calls = [f for f in visitor.findings if f[0] == "llm_request"]
+        if llm_calls:
+            weight += 50  # Прямой признак PromptLock
+        elif "requests" in visitor._imports:
+            weight += 15
+
+        # 4. Динамическое выполнение кода (exec/eval)
+        if visitor._exec_eval:
+            weight += 30
+
+        # --- КЛАССИФИКАЦИЯ И ВЫВОД ---
         fstr = str(filepath)
 
-        # Отдельные находки
-        if len(visitor.findings) >= 5:
+        # Если вес слишком мал (например, < 40), считаем код учебным/безопасным
+        if weight < 40:
+            return
+
+            # Определяем критичность на основе веса
+        if weight >= 80:
+            severity = Severity.CRITICAL
+        elif weight >= 60:
             severity = Severity.HIGH
-        elif len(visitor.findings) >= 2:
-            severity = Severity.MEDIUM
         else:
-            severity = Severity.LOW
+            severity = Severity.MEDIUM
 
-        if visitor.findings:
-            sample = [f"  L{ln}: {desc}" for cat, ln, desc in visitor.findings[:8]]
-            self.engine.add_alert(Alert(
-                timestamp=datetime.now(),
-                category=ThreatCategory.SUSPICIOUS_SCRIPT,
-                severity=severity,
-                description=(
-                    f"AST-анализ: {len(visitor.findings)} подозрительных конструкций."
-                ),
-                source_path=fstr,
-                details={
-                    "findings": [
-                        {"category": c, "line": ln, "desc": d}
-                        for c, ln, d in visitor.findings
-                    ],
-                    "summary": "\n".join(sample),
-                },
-            ))
+        # Генерируем основной алерт по AST-структуре
+        sample = [f"  L{ln}: {desc}" for cat, ln, desc in visitor.findings[:5]]
+        self.engine.add_alert(Alert(
+            timestamp=datetime.now(),
+            category=ThreatCategory.SUSPICIOUS_SCRIPT,
+            severity=severity,
+            description=(
+                f"AST-анализ выявил опасную комбинацию действий (Threat Score: {weight})."
+            ),
+            source_path=fstr,
+            details={
+                "weight": weight,
+                "findings": [
+                    {"category": c, "line": ln, "desc": d}
+                    for c, ln, d in visitor.findings
+                ],
+                "summary": "\n".join(sample),
+            },
+        ))
 
-        # Поведенческие цепочки
+        # Генерируем алерты по поведенческим цепочкам (API Chaining)
+        # Это то, что ты называешь "Секретным соусом" на Слайде 4
         chains = visitor.get_chain_alerts()
         for chain_type, description in chains:
+            # Цепочки всегда имеют высокий приоритет
             self.engine.add_alert(Alert(
                 timestamp=datetime.now(),
                 category=ThreatCategory.SUSPICIOUS_SCRIPT,
                 severity=Severity.CRITICAL if "ransomware" in chain_type else Severity.HIGH,
                 description=f"ЦЕПОЧКА API: {description}",
                 source_path=fstr,
-                details={"chain_type": chain_type},
+                details={"chain_type": chain_type, "score_boost": "+40"},
             ))

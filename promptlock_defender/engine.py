@@ -65,6 +65,8 @@ class DetectionEngine:
         self.first_alert_time = None
 
     def add_alert(self, alert: Alert):
+        if not self.is_running:
+            return
         self.alerts.append(alert)
         if self.scan_start_time is not None and self.first_alert_time is None:
             import time
@@ -78,10 +80,46 @@ class DetectionEngine:
 
     @property
     def threat_score(self) -> int:
-        """Расчёт общего уровня угрозы (0-100)."""
-        weights = {Severity.LOW: 5, Severity.MEDIUM: 15, Severity.HIGH: 30, Severity.CRITICAL: 50}
-        score = sum(weights[a.severity] for a in self.alerts)
-        return min(score, 100)
+        if not self.alerts:
+            return 0
+
+        # 1. Группируем максимальную серьезность по каждой категории
+        cat_severity = {}
+        for a in self.alerts:
+            order = [Severity.LOW, Severity.MEDIUM, Severity.HIGH, Severity.CRITICAL]
+            if a.category not in cat_severity or order.index(a.severity) > order.index(cat_severity[a.category]):
+                cat_severity[a.category] = a.severity
+
+        # 2. Определяем веса
+        sev_values = {Severity.LOW: 10, Severity.MEDIUM: 20, Severity.HIGH: 35, Severity.CRITICAL: 50}
+
+        # Берем самый тяжелый вес из всех найденных категорий
+        max_single_weight = max(sev_values[sev] for sev in cat_severity.values())
+
+        # 3. Считаем количество РАЗНЫХ типов угроз
+        # (например: Шифрование + Процессы + AST = 3 типа)
+        unique_types = len(cat_severity)
+
+        # --- ЖЕСТКАЯ ЛОГИКА ОТСЕЧКИ (The "Isolation" Rule) ---
+        if unique_types == 1:
+            # Если найдена только ОДНА категория (пусть даже 1000 файлов майнкрафта)
+            # Мы не даем баллу подняться выше 40.
+            return min(max_single_weight, 40)
+
+        # 4. Если категорий несколько, начинаем суммировать с коэффициентом
+        # Итого = (Самый тяжелый фактор) + (Сумма остальных * 0.5)
+        all_weights = sorted([sev_values[sev] for sev in cat_severity.values()], reverse=True)
+        total_score = all_weights[0]  # Самый тяжелый
+
+        for extra_weight in all_weights[1:]:
+            total_score += (extra_weight * 0.8)  # Добавляем веса остальных категорий
+
+        # 5. Спец-условие для PromptLock (Критическое комбо)
+        # Если есть и попытка обхода (Jailbreak), и работа с нейросетью — это сразу +40 к счету
+        if ThreatCategory.LLM_ABUSE in cat_severity and ThreatCategory.JAILBREAK_PROMPT in cat_severity:
+            total_score += 40
+
+        return min(int(total_score), 100)
 
     def summary(self) -> str:
         if not self.alerts:

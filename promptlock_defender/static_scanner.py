@@ -141,6 +141,35 @@ class StaticScanner:
         """Преобразование находок в алерты."""
         fstr = str(filepath)
 
+        score = 0
+        if findings["jailbreak"]: score += 50  # Промпты — это очень подозрительно
+        if findings["llm_api"]: score += 30  # Работа с LLM
+        if findings["encryption"]: score += 25  # Функции шифрования
+        if findings["execution"]: score += 20  # Запуск подпроцессов
+
+        # Если файл просто использует 'os.remove' (как в змейке для логов),
+        # он наберет 20-25 баллов и МЫ МОЛЧИМ.
+
+        if score >= 70:
+            sev = Severity.CRITICAL if score >= 90 else Severity.HIGH
+            self.engine.add_alert(Alert(
+                timestamp=datetime.now(),
+                category=ThreatCategory.SUSPICIOUS_SCRIPT,
+                severity=sev,
+                description=f"Подозрительная активность кода (Score: {score}). Найдены: " +
+                            ", ".join([k for k, v in findings.items() if v]),
+                source_path=fstr,
+                details={"score": score, "matches": findings}
+            ))
+        elif score >= 40:  # Просто фиксируем как низкий риск
+            self.engine.add_alert(Alert(
+                timestamp=datetime.now(),
+                category=ThreatCategory.SUSPICIOUS_SCRIPT,
+                severity=Severity.LOW,
+                description=f"Малозначимые совпадения в коде (Score: {score}).",
+                source_path=fstr
+            ))
+
         if findings["jailbreak"]:
             self.engine.add_alert(Alert(
                 timestamp=datetime.now(),
@@ -196,7 +225,7 @@ class StaticScanner:
 
         # Комбинированное обнаружение: если файл содержит и jailbreak, и LLM API, и шифрование
         combo_count = sum(1 for v in findings.values() if v)
-        if combo_count >= 3:
+        if combo_count >= 2:
             self.engine.add_alert(Alert(
                 timestamp=datetime.now(),
                 category=ThreatCategory.SUSPICIOUS_SCRIPT,

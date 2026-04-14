@@ -178,7 +178,7 @@ class MLClassifier:
                     self.engine.add_alert(Alert(
                         timestamp=datetime.now(),
                         category=ThreatCategory.SUSPICIOUS_SCRIPT,
-                        severity=Severity.HIGH if confidence > 0.85 else Severity.MEDIUM,
+                        severity=Severity.HIGH if confidence > 0.92 else Severity.LOW,
                         description=(
                             f"ML-классификатор: файл определён как ВРЕДОНОСНЫЙ "
                             f"(уверенность: {confidence:.0%})."
