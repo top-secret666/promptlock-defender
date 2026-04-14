@@ -19,8 +19,8 @@ from .engine import Alert, DetectionEngine, Severity, ThreatCategory
 logger = logging.getLogger("promptlock_defender.heuristics")
 
 # Порог энтропии: обычный текст ~4.5, сжатый/зашифрованный ~7.5+
-ENTROPY_THRESHOLD_HIGH = 7.0
-ENTROPY_THRESHOLD_SUSPICIOUS = 6.0
+ENTROPY_THRESHOLD_HIGH = 7.5
+ENTROPY_THRESHOLD_SUSPICIOUS = 7.1
 
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 МБ
 

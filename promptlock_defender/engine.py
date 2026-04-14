@@ -54,6 +54,7 @@ class DetectionEngine:
 
     def __init__(self):
         self.alerts: List[Alert] = []
+        self.is_running = True
         self.scan_start_time: Optional[float] = None
         self.first_alert_time: Optional[float] = None
 

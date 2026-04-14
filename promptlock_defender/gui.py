@@ -58,6 +58,7 @@ class PromptLockDefenderGUI:
 
     def __init__(self):
         self.root = Tk()
+        self.scanning_active = False
         self.root.title("PromptLock Defender v2.0")
         self.root.geometry("1000x720")
         self.root.minsize(800, 600)
@@ -130,6 +131,14 @@ class PromptLockDefenderGUI:
             activebackground="#00a0cc", relief="flat", padx=20, pady=6,
         )
         self.scan_btn.pack(side=LEFT, padx=(0, 6))
+
+        self.stop_btn = Button(
+            btn_frame, text="🛑 СТОП", command=self._stop_scan,
+            font=("Segoe UI", 11, "bold"), bg=RED, fg=FG_TEXT,
+            activebackground="#cc0000", relief="flat", padx=20, pady=6,
+            state=DISABLED  # По умолчанию выключена
+        )
+        self.stop_btn.pack(side=LEFT, padx=(0, 6))
 
         Button(
             btn_frame, text="🧪 Генерация тестовых артефактов",
@@ -294,7 +303,8 @@ class PromptLockDefenderGUI:
             return
 
         self.scan_running = True
-        self.scan_btn.config(state=DISABLED, text="⏳ Сканирование...")
+        self.scan_btn.config(state=DISABLED, text="⏳ Ждите...")
+        self.stop_btn.config(state=NORMAL)
         self.progress_var.set(0)
 
         self.scan_thread = threading.Thread(
@@ -302,10 +312,18 @@ class PromptLockDefenderGUI:
         )
         self.scan_thread.start()
 
+    def _stop_scan(self):
+        """Метод для прерывания сканирования."""
+        if self.engine:
+            self.engine.is_running = False  # Флаг, который мы добавим в engine.py
+        self._log("⛔ Запрос на остановку отправлен...", "medium")
+        self.stop_btn.config(state=DISABLED)
+
     def _run_scan(self, scan_dir: str):
         """Полный скан в отдельном потоке."""
         try:
             self.engine = DetectionEngine()
+            self.engine.is_running = True
             self.engine.start_scan()
 
             # Патчим add_alert для live-вывода в GUI
@@ -335,6 +353,10 @@ class PromptLockDefenderGUI:
             ]
 
             for name, progress, fn in modules:
+                if not self.engine.is_running:
+                    self.root.after(0, self._log, "🛑 СКАНИРОВАНИЕ ПРЕРВАНО", "critical")
+                    break
+
                 self.root.after(0, self.status_var.set, f"Шаг: {name}...")
                 self.root.after(0, self._log, f"▶ {name}...", "header")
 
@@ -411,6 +433,7 @@ class PromptLockDefenderGUI:
             self.root.after(0, self.scan_btn.config, {
                 "state": NORMAL, "text": "🔍 Полный скан"
             })
+            self.root.after(0, self.stop_btn.config, {"state": DISABLED})
 
     def _update_score(self):
         if not self.engine:

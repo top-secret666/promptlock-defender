@@ -174,7 +174,7 @@ class MLClassifier:
 
                 label, confidence = self.predict_file(str(filepath))
 
-                if label == "malicious" and confidence > 0.7:
+                if label == "malicious" and confidence > 0.92:
                     self.engine.add_alert(Alert(
                         timestamp=datetime.now(),
                         category=ThreatCategory.SUSPICIOUS_SCRIPT,
