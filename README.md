@@ -1,5 +1,4 @@
 <div align="center">
-<img width="1248" height="832" alt="OIG1 H4I7pp" src="https://github.com/user-attachments/assets/dd83a2f2-de27-40c9-b61c-e30dea5fbb7b" />
 
 # 🛡️ PromptLock Defender
 
@@ -10,8 +9,14 @@
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 [![GitHub Stars](https://img.shields.io/github/stars/top-secret666/promptlock-defender?style=flat)](https://github.com/top-secret666/promptlock-defender/stargazers)
 
+
 > **PromptLock** — новый класс вирусов-вымогателей, которые используют локальные AI-модели (Ollama/LLaMA) для генерации Lua-скриптов шифрования и обхода антивирусов.  
 > **PromptLock Defender** обнаруживает их до того, как они успевают зашифровать ваши файлы.
+
+
+<img width="1229" height="931" alt="image" src="https://github.com/user-attachments/assets/7ad47e9e-0022-47e5-92ab-2e454280baf6" />
+
+<img width="1554" height="782" alt="image" src="https://github.com/user-attachments/assets/ce057b1e-dcd0-419c-b8b8-cde9c7496783" />
 
 </div>
 
