@@ -210,4 +210,5 @@ scikit-learn>=1.3   # ML-классификатор
 
 Made for conference demo · Python 3.11 · Windows 10+
 
+<img width="1000" height="300" alt="ca262e0354eea311c41134c3e4bc3bc2" src="https://github.com/user-attachments/assets/8e0d8040-35d5-4932-8b69-324fed905529" />
 </div>
