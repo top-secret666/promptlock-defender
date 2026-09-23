@@ -25,7 +25,8 @@ env/
 demo_report.html
 demo_report.json
 
-# Inno Setup output
+# Inno Setup
+installer.iss
 Output/
 
 # Тестовые артефакты (PromptLock-записки, которые генерируются при тесте)
